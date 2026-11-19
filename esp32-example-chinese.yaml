@@ -4,7 +4,8 @@ substitutions:
   external_components_source: github://Depressboy/esphome-yuhui-mppt@main
   tx_pin: GPIO16
   rx_pin: GPIO17
-  rx_timeout: 2000ms
+  # 9600bps 一帧最长 93 字节约 97ms，300ms 足够覆盖从机处理延时
+  rx_timeout: 300ms
 
 esphome:
   name: ${name}
@@ -12,7 +13,7 @@ esphome:
   min_version: 2024.6.0
   project:
     name: "Depressboy.esphome-yuhui-mppt"
-    version: 1.0.1
+    version: 1.1.0
 
 esp32:
   board: wemos_d1_mini32
@@ -21,6 +22,7 @@ esp32:
 
 external_components:
   - source: ${external_components_source}
+    # 本地调试时改成 source: type: local  paths: [components]
     refresh: 0s
 
 wifi:
@@ -31,17 +33,18 @@ ota:
   platform: esphome
 
 logger:
-  level: DEBUG
-
-# If you use Home Assistant please remove this `mqtt` section and uncomment the `api` component!
-# The native API has many advantages over MQTT: https://esphome.io/components/api.html#advantages-over-mqtt
-mqtt:
-  broker: !secret mqtt_host
-  username: !secret mqtt_username
-  password: !secret mqtt_password
-  id: mqtt_client
+  # 排障时改 DEBUG 可以看每一帧收发，正常跑建议 INFO，少刷串口也省堆
+  level: INFO
 
 api:
+
+# 用 Home Assistant 就走上面的 api，把下面 mqtt 整段注掉；
+# 只有不用 HA、纯 MQTT 的场合才需要打开它（两个同时开会双份上报、多占内存）
+# mqtt:
+#   broker: !secret mqtt_host
+#   username: !secret mqtt_username
+#   password: !secret mqtt_password
+#   id: mqtt_client
 
 uart:
   - id: uart_bus_0
@@ -52,11 +55,21 @@ uart:
 custom_modbus:
   - id: mod_0
     uart_id: uart_bus_0
+    # 半帧闲置多久算残帧，默认 30ms 即可
+    frame_gap: 30ms
 
 yuhui_mppt:
-  - device_address: 1
+  - device_address: 0x01
     id: mppt_0
     custom_modbus_id: mod_0
+    # 协议要求查询间隔 >= 1 秒，这里默认 5s
+    update_interval: 5s
+    rx_timeout: ${rx_timeout}
+    retry_count: 2
+    # 配了下面「仅 0xB1 才有」的传感器时会自动置真，一般不用手动开
+    poll_full_status: false
+    # 对时默认用群控地址 0x00（协议规定群控不返回数据）
+    clock_broadcast: true
 
 sensor:
   - platform: yuhui_mppt
@@ -69,12 +82,19 @@ sensor:
       name: CCS-充电电流
     internal_temperature:
       name: ITS-内部温度
+    external_temperature:
+      name: ETS-外部温度
     daily_energy:
       name: DES-日发电量
     total_energy:
       name: TES-总发电量
     charging_power:
       name: CPS-充电功率
+    # 下面两项来自 0xB1 全量帧，配了会自动切到全量轮询
+    # rated_voltage:
+    #   name: RVS-额定电压
+    # max_charge_current:
+    #   name: MCS-最大充电电流
 
 switch:
   - platform: yuhui_mppt
@@ -83,6 +103,7 @@ switch:
       name: CHS-禁止充电开关
     dc_output_switch:
       name: DOS-DC输出开关
+
 button:
   - platform: yuhui_mppt
     yuhui_mppt_id: mppt_0
@@ -112,6 +133,12 @@ text_sensor:
       name: ITS2-内部温度传感器2
     external_temperature1_status:
       name: ETS-外部温度传感器
+    # 0xEE 错误帧的文字描述，设参数失败时很有用
+    last_error:
+      name: ERR-最后一次错误
+    # 仅在 0xB1 / 0xB2 帧里存在
+    # battery_type:
+    #   name: BT-电池类型
 
 binary_sensor:
   - platform: yuhui_mppt
@@ -143,6 +170,7 @@ binary_sensor:
     overvoltage_protection:
       name: OVP-过压保护
 
+# 对时按钮依赖系统时间，没有 SNTP 会直接跳过（不会把 MPPT 对到 1970 年）
 time:
   - platform: sntp
-    id: my_time 
+    id: my_time

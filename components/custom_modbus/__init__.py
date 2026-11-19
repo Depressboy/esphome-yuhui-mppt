@@ -10,7 +10,6 @@ from esphome.const import (
     CONF_FLOW_CONTROL_PIN,
     CONF_ID,
     CONF_ADDRESS,
-    CONF_DISABLE_CRC,
 )
 from esphome import pins
 
@@ -24,6 +23,9 @@ MULTI_CONF = True
 CONF_ROLE = "role"
 CONF_MODBUS_ID = "custom_modbus_id"
 CONF_SEND_WAIT_TIME = "send_wait_time"
+CONF_FRAME_GAP = "frame_gap"
+# esphome.const 在新版本里已经没有 CONF_DISABLE_CRC 了，本地定义一份保证向后兼容
+CONF_DISABLE_CRC = "disable_crc"
 
 ModbusRole = modbus_ns.enum("ModbusRole")
 MODBUS_ROLES = {
@@ -39,6 +41,11 @@ CONFIG_SCHEMA = (
             cv.Optional(CONF_FLOW_CONTROL_PIN): pins.gpio_output_pin_schema,
             cv.Optional(
                 CONF_SEND_WAIT_TIME, default="250ms"
+            ): cv.positive_time_period_milliseconds,
+            # 半帧闲置超过该时间即丢弃。9600bps 下 3.5 个字符约 3.6ms，
+            # 30ms 足够容忍主机端调度抖动，又不会把两帧拼在一起。
+            cv.Optional(
+                CONF_FRAME_GAP, default="30ms"
             ): cv.positive_time_period_milliseconds,
             cv.Optional(CONF_DISABLE_CRC, default=False): cv.boolean,
         }
@@ -61,6 +68,7 @@ async def to_code(config):
         cg.add(var.set_flow_control_pin(pin))
 
     cg.add(var.set_send_wait_time(config[CONF_SEND_WAIT_TIME]))
+    cg.add(var.set_frame_gap(config[CONF_FRAME_GAP]))
     cg.add(var.set_disable_crc(config[CONF_DISABLE_CRC]))
 
 

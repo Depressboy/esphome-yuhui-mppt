@@ -15,8 +15,8 @@ class YuhuiMPPTButton : public button::Button, public Component {
   void press_action() override;
 
  protected:
-  YuhuiMPPT *parent_;
-  uint8_t send_command_;
+  YuhuiMPPT *parent_{nullptr};
+  uint8_t send_command_{0};
 };
 
 class YuhuiMPPTClockCalibrationButton : public button::Button, public Component {
@@ -25,7 +25,7 @@ class YuhuiMPPTClockCalibrationButton : public button::Button, public Component 
   void press_action() override;
 
  protected:
-  YuhuiMPPT *parent_;
+  YuhuiMPPT *parent_{nullptr};
 };
 
 }  // namespace yuhui
